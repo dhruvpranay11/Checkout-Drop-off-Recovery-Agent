@@ -131,11 +131,13 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
         response = None
         last_error = None
         
-        # Try up to 3 times for rate limits or transient errors
-        for attempt in range(3):
+        # To bypass strict 20/min quotas, we will cascade through multiple valid Flash models
+        models_to_try = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-flash-latest']
+        
+        for model_name in models_to_try:
             try:
                 response = gemini_client.models.generate_content(
-                    model='gemini-pro-latest',
+                    model=model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -144,16 +146,15 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
                 )
                 break # Success! Break out of the loop
             except Exception as e:
-                print(f"Attempt {attempt+1} failed: {e}")
+                print(f"Model {model_name} failed: {e}")
                 last_error = e
-                if '429' in str(e) or 'quota' in str(e).lower():
-                    raise HTTPException(status_code=429, detail="Gemini Free Tier Quota Exceeded. Please wait a minute before running the agent again.")
-                import time
-                time.sleep(1.5) # wait 1.5 seconds before retrying
+                # If we hit a rate limit, just try the next available model
                 continue
                 
         if not response:
-            raise Exception(f"Failed after 3 attempts. Last error: {last_error}")
+            if '429' in str(last_error) or 'quota' in str(last_error).lower():
+                raise HTTPException(status_code=429, detail="NudgePay System Error: Free Tier Quota Exhausted across all AI models. Please wait a few minutes.")
+            raise Exception(f"Failed after trying all models. Last error: {last_error}")
         
         # Parse response safely in case of markdown wrappers
         raw_text = response.text.strip()
