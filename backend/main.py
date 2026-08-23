@@ -128,15 +128,28 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
     """
     
     try:
-        response = gemini_client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=RecoveryActionResponse,
-                temperature=0.2,
-            ),
-        )
+        models_to_try = ['gemini-3.6-flash', 'gemini-3.6-pro', 'gemini-4.0-flash', 'gemini-4.0-pro']
+        response = None
+        last_error = None
+        
+        for model_name in models_to_try:
+            try:
+                response = gemini_client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=RecoveryActionResponse,
+                    ),
+                )
+                break # Success! Break out of the loop
+            except Exception as e:
+                print(f"Model {model_name} failed: {e}")
+                last_error = e
+                continue
+                
+        if not response:
+            raise Exception(f"All models failed. Last error: {last_error}")
         
         # Parse response
         decision = RecoveryActionResponse.model_validate_json(response.text)
