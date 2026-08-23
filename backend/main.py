@@ -1,0 +1,202 @@
+import os
+# pyrefly: ignore [missing-import]
+from fastapi import FastAPI, HTTPException
+# pyrefly: ignore [missing-import]
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from supabase import create_client, Client
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+from typing import Optional, List
+from datetime import datetime
+import random
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+load_dotenv()
+
+app = FastAPI(title="Razorpay Recovery Agent API")
+
+# Allow CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Initialize Supabase
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("Warning: SUPABASE_URL or SUPABASE_KEY is missing.")
+
+supabase: Client = create_client(SUPABASE_URL or "", SUPABASE_KEY or "") if SUPABASE_URL and SUPABASE_KEY else None
+
+# Initialize Gemini
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    print("Warning: GEMINI_API_KEY is missing.")
+
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+class OrderSimulateRequest(BaseModel):
+    amount: float
+    reason: str
+
+class RecoveryActionResponse(BaseModel):
+    action: str = Field(description="The action to take: 'offer_discount', 'send_reminder', 'escalate', or 'drop'")
+    discount_percentage: float = Field(description="Discount percentage if offered, 0 otherwise")
+    reasoning: str = Field(description="The reasoning behind the decision")
+
+@app.post("/simulate-abandonment")
+async def simulate_abandonment(req: OrderSimulateRequest):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    response = supabase.table('orders').insert({
+        'cart_value': req.amount,
+        'status': 'abandoned',
+        'contact_attempts': 0,
+        'drop_off_reason': req.reason
+    }).execute()
+    
+    if response.data:
+        return response.data[0]
+    raise HTTPException(status_code=500, detail="Failed to simulate abandonment")
+
+@app.post("/trigger-recovery/{order_id}")
+async def trigger_recovery(order_id: str):
+    if not supabase or not gemini_client:
+        raise HTTPException(status_code=500, detail="Supabase or Gemini not configured")
+        
+    # Fetch order
+    order_res = supabase.table('orders').select('*').eq('id', order_id).execute()
+    if not order_res.data:
+        raise HTTPException(status_code=404, detail="Order not found")
+        
+    order = order_res.data[0]
+    
+    # Check if already recovered or escalated
+    if order['status'] in ['recovered', 'escalated']:
+        return {"status": "skipped", "message": f"Order already {order['status']}"}
+        
+    # Hard Guardrails
+    if order['cart_value'] > 50000:
+        supabase.table('orders').update({'status': 'escalated'}).eq('id', order_id).execute()
+        supabase.table('audit_logs').insert({
+            'order_id': order_id,
+            'action_type': 'escalate',
+            'metadata': {'discount_offered': 0},
+            'reasoning': 'Hard Guardrail: Order value > ₹50,000. Escalating to human agent.'
+        }).execute()
+        return {"status": "escalated", "reason": "Amount > 50000"}
+
+    if order['contact_attempts'] >= 3:
+        supabase.table('orders').update({'status': 'escalated'}).eq('id', order_id).execute()
+        supabase.table('audit_logs').insert({
+            'order_id': order_id,
+            'action_type': 'escalate',
+            'metadata': {'discount_offered': 0},
+            'reasoning': 'Hard Guardrail: Max 3 attempts reached. Escalating.'
+        }).execute()
+        return {"status": "escalated", "reason": "Max attempts reached"}
+
+    # Ask Gemini for strategy
+    prompt = f"""
+    You are an AI recovery agent for an e-commerce checkout.
+    An order was abandoned.
+    Order details:
+    - Amount: ₹{order['cart_value']}
+    - Drop-off Reason: {order['drop_off_reason']}
+    - Previous Attempts: {order['contact_attempts']}
+    
+    Decide on the best recovery action.
+    Options for action: 'offer_discount', 'send_reminder', 'escalate', 'drop'.
+    Important rules:
+    - If price hesitation, offer a discount. Max discount allowed is 10%.
+    - If UPI timeout, send a reminder first.
+    - If card decline, send a reminder to try another method.
+    """
+    
+    try:
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=RecoveryActionResponse,
+                temperature=0.2,
+            ),
+        )
+        
+        # Parse response
+        decision = RecoveryActionResponse.model_validate_json(response.text)
+        
+        # Enforce discount cap
+        final_discount = min(decision.discount_percentage, 10.0)
+        
+        # Update attempts
+        new_attempts = order['contact_attempts'] + 1
+        
+        # Record audit log
+        supabase.table('audit_logs').insert({
+            'order_id': order_id,
+            'action_type': decision.action,
+            'metadata': {'discount_offered': final_discount},
+            'reasoning': decision.reasoning
+        }).execute()
+        
+        # We simulate recovery success randomly if discount is offered or reminder sent for this demo
+        # In real life, this would wait for user action
+        success = random.choice([True, False])
+        
+        if success:
+             supabase.table('orders').update({'status': 'recovered', 'contact_attempts': new_attempts}).eq('id', order_id).execute()
+             result_status = "recovered"
+        else:
+             supabase.table('orders').update({'contact_attempts': new_attempts}).eq('id', order_id).execute()
+             result_status = "abandoned"
+
+        return {
+            "status": result_status,
+            "action": decision.action,
+            "discount": final_discount,
+            "reasoning": decision.reasoning
+        }
+        
+    except Exception as e:
+        print(f"Error calling Gemini or DB: {e}")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+@app.get("/dashboard-metrics")
+async def dashboard_metrics():
+    if not supabase:
+        return {"error": "Supabase not configured"}
+        
+    # Get all orders
+    orders_res = supabase.table('orders').select('*').execute()
+    orders = orders_res.data
+    
+    revenue_at_risk = sum(o['cart_value'] for o in orders if o['status'] == 'abandoned')
+    revenue_recovered = sum(o['cart_value'] for o in orders if o['status'] == 'recovered')
+    
+    # Get latest audit logs
+    logs_res = supabase.table('audit_logs').select('*, orders(cart_value, drop_off_reason)').order('created_at', desc=True).limit(10).execute()
+    logs = logs_res.data
+    
+    return {
+        "revenue_at_risk": revenue_at_risk,
+        "revenue_recovered": revenue_recovered,
+        "total_abandoned": len([o for o in orders if o['status'] == 'abandoned']),
+        "total_recovered": len([o for o in orders if o['status'] == 'recovered']),
+        "total_escalated": len([o for o in orders if o['status'] == 'escalated']),
+        "recent_logs": logs
+    }
+
+# Serve static files (frontend)
+import os
+frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
+app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
