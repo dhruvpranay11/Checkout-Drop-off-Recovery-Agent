@@ -128,14 +128,14 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
     """
     
     try:
-        models_to_try = ['gemini-3.6-flash', 'gemini-3.6-pro', 'gemini-4.0-flash', 'gemini-4.0-pro']
         response = None
         last_error = None
         
-        for model_name in models_to_try:
+        # Try up to 3 times for rate limits or transient errors
+        for attempt in range(3):
             try:
                 response = gemini_client.models.generate_content(
-                    model=model_name,
+                    model='gemini-3.6-flash',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
@@ -144,15 +144,26 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
                 )
                 break # Success! Break out of the loop
             except Exception as e:
-                print(f"Model {model_name} failed: {e}")
+                print(f"Attempt {attempt+1} failed: {e}")
                 last_error = e
+                import time
+                time.sleep(1.5) # wait 1.5 seconds before retrying
                 continue
                 
         if not response:
-            raise Exception(f"All models failed. Last error: {last_error}")
+            raise Exception(f"Failed after 3 attempts. Last error: {last_error}")
         
-        # Parse response
-        decision = RecoveryActionResponse.model_validate_json(response.text)
+        # Parse response safely in case of markdown wrappers
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        elif raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
+        decision_dict = json.loads(raw_text.strip())
+        decision = RecoveryActionResponse(**decision_dict)
         
         # Enforce discount cap
         final_discount = min(decision.discount_percentage, 10.0)
