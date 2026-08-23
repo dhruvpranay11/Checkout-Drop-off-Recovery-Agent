@@ -135,7 +135,7 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
         for attempt in range(3):
             try:
                 response = gemini_client.models.generate_content(
-                    model='gemini-3.6-flash',
+                    model='gemini-3.6-pro',
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
