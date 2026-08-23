@@ -206,6 +206,15 @@ document.getElementById('recover-btn').addEventListener('click', async () => {
         }
         
         fetchMetrics();
+        await fetchAbandonedOrders();
+        
+        // Reset selection if the order was recovered and removed from the list
+        const selectElement = document.getElementById('order-select');
+        const optionExists = Array.from(selectElement.options).some(opt => opt.value === currentOrderId);
+        if (!optionExists) {
+            selectElement.value = "";
+            currentOrderId = null;
+        }
         
     } catch (err) {
         statusContainer.className = 'mt-5 p-5 rounded-xl bg-rzp-danger/10 border border-rzp-danger/40 backdrop-blur-md';
@@ -300,5 +309,5 @@ async function fetchMetrics() {
 }
 
 // Start polling
-setInterval(fetchMetrics, 3000);
+setInterval(fetchMetrics, 1000);
 fetchMetrics();
