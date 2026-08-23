@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 load_dotenv()
 
-app = FastAPI(title="Razorpay Recovery Agent API")
+app = FastAPI(title="NudgePay Recovery Agent API")
 
 # Allow CORS for frontend
 app.add_middleware(
