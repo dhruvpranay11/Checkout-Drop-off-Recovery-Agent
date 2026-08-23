@@ -146,6 +146,8 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
             except Exception as e:
                 print(f"Attempt {attempt+1} failed: {e}")
                 last_error = e
+                if '429' in str(e) or 'quota' in str(e).lower():
+                    raise HTTPException(status_code=429, detail="Gemini Free Tier Quota Exceeded. Please wait a minute before running the agent again.")
                 import time
                 time.sleep(1.5) # wait 1.5 seconds before retrying
                 continue

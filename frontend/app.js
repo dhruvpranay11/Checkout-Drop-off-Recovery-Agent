@@ -185,6 +185,16 @@ document.getElementById('recover-btn').addEventListener('click', async () => {
         
         const data = await res.json();
         
+        if (!res.ok) {
+            statusContainer.className = 'mt-5 p-5 rounded-xl bg-rzp-danger/10 border border-rzp-danger/40 backdrop-blur-md shadow-[0_0_20px_rgba(239,68,68,0.2)]';
+            statusText.innerText = data.detail || "Execution Error: Unable to reach Gemini core.";
+            btn.disabled = false;
+            spinner.classList.add('hidden');
+            icon.classList.remove('hidden');
+            text.innerText = 'Run Agent Again';
+            return;
+        }
+        
         if (data.status === 'escalated') {
             statusContainer.className = 'mt-5 p-5 rounded-xl bg-rzp-danger/10 border border-rzp-danger/40 backdrop-blur-md shadow-[0_0_20px_rgba(239,68,68,0.2)]';
             statusText.innerHTML = `<div class="flex items-center gap-2 text-rzp-danger font-bold tracking-widest mb-2 text-xs uppercase"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> ESCALATED TO HUMAN</div><span class="text-sm text-rzp-danger/90 font-medium">${data.reason}</span>`;
