@@ -70,6 +70,35 @@ function scrambleText(element, finalValue, duration = 800) {
 // 4. API & Metrics Logic
 // ==========================================
 
+// Fetch and populate abandoned orders dropdown
+async function fetchAbandonedOrders() {
+    try {
+        const res = await fetch(`${API_BASE}/abandoned-orders`);
+        if (!res.ok) return;
+        const orders = await res.json();
+        
+        const select = document.getElementById('order-select');
+        // Keep the first disabled option
+        select.innerHTML = '<option value="" disabled selected class="bg-rzp-surface">Select an abandoned order...</option>';
+        
+        orders.forEach(order => {
+            const option = document.createElement('option');
+            option.value = order.id;
+            option.className = 'bg-rzp-surface';
+            option.textContent = `ORD_${order.id.substring(0,6).toUpperCase()} - ₹${order.cart_value} - ${order.status.toUpperCase()}`;
+            select.appendChild(option);
+        });
+    } catch (e) {
+        console.error("Failed to fetch abandoned orders", e);
+    }
+}
+// Call on load
+fetchAbandonedOrders();
+
+document.getElementById('order-select').addEventListener('change', (e) => {
+    currentOrderId = e.target.value;
+});
+
 function timeAgo(dateString) {
     const seconds = Math.floor((new Date() - new Date(dateString)) / 1000);
     if (seconds < 60) return 'Just now';
@@ -110,9 +139,9 @@ document.getElementById('simulate-form').addEventListener('submit', async (e) =>
         const data = await res.json();
         currentOrderId = data.id;
         
-        const recArea = document.getElementById('recovery-area');
-        recArea.classList.remove('hidden');
-        scrambleText(document.getElementById('current-order-id'), currentOrderId.substring(0,8).toUpperCase(), 600);
+        // Refresh dropdown and select the newly injected order
+        await fetchAbandonedOrders();
+        document.getElementById('order-select').value = currentOrderId;
         
         const statusContainer = document.getElementById('recover-status-container');
         statusContainer.classList.add('hidden');
@@ -143,11 +172,15 @@ document.getElementById('recover-btn').addEventListener('click', async () => {
     text.innerText = 'Analyzing Intent...';
     
     statusContainer.classList.remove('hidden');
-    statusText.innerHTML = '<span class="animate-pulse">Gemini 2.5 Flash is consulting safety guardrails...</span>';
+    statusText.innerHTML = '<span class="animate-pulse">Gemini 3.6 Flash is consulting safety guardrails...</span>';
+
+    const promptText = document.getElementById('manual-prompt').value;
 
     try {
         const res = await fetch(`${API_BASE}/trigger-recovery/${currentOrderId}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ custom_prompt: promptText })
         });
         
         const data = await res.json();

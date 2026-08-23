@@ -262,13 +262,25 @@
                     </form>
 
                     <!-- Recovery Trigger Area -->
-                    <div id="recovery-area" class="mt-8 pt-8 border-t border-white/10 hidden">
-                        <div class="flex items-center justify-between mb-5">
-                            <span class="text-xs text-slate-400 font-bold uppercase tracking-widest">Target Order</span>
-                            <span id="current-order-id" class="text-sm font-mono text-rzp-primary bg-rzp-primary/10 px-3 py-1.5 rounded-lg border border-rzp-primary/30 shadow-[0_0_10px_rgba(59,130,246,0.1)]"></span>
+                    <div id="recovery-area" class="mt-8 pt-8 border-t border-white/10">
+                        <div class="group mb-5">
+                            <label class="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-widest group-hover:text-rzp-primary transition-colors">Target Order</label>
+                            <div class="relative">
+                                <select id="order-select" class="glass-input w-full rounded-2xl px-5 py-4 text-white text-lg font-medium appearance-none cursor-pointer transition-all">
+                                    <option value="" disabled selected class="bg-rzp-surface">Select an abandoned order...</option>
+                                </select>
+                                <div class="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="group mb-5">
+                            <label class="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-widest group-hover:text-rzp-accent transition-colors">Manual AI Instructions (Optional)</label>
+                            <textarea id="manual-prompt" rows="2" placeholder="e.g. 'Offer a 15% discount because they are a VIP'" class="glass-input w-full rounded-2xl px-5 py-4 text-white text-sm font-medium transition-all resize-none"></textarea>
                         </div>
                         
-                        <button id="recover-btn" class="w-full relative overflow-hidden bg-rzp-primary/10 border border-rzp-primary text-rzp-primary hover:text-white font-bold py-4 rounded-2xl transition-all duration-300 group hover:bg-rzp-primary hover:shadow-[0_0_30px_rgba(59,130,246,0.4)]">
+                        <button id="recover-btn" class="w-full relative overflow-hidden bg-rzp-primary/10 border border-rzp-primary text-rzp-primary hover:text-white font-bold py-4 rounded-2xl transition-all duration-300 group hover:bg-rzp-primary hover:shadow-[0_0_30px_rgba(59,130,246,0.4)] disabled:opacity-50 disabled:cursor-not-allowed">
                             <div class="flex justify-center items-center gap-3 z-10 relative">
                                 <svg class="w-6 h-6 animate-spin hidden" id="recover-spinner" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                 <svg class="w-6 h-6" id="recover-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>

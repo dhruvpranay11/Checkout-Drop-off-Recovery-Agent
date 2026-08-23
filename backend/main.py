@@ -46,6 +46,9 @@ class OrderSimulateRequest(BaseModel):
     amount: float
     reason: str
 
+class TriggerRecoveryRequest(BaseModel):
+    custom_prompt: Optional[str] = None
+
 class RecoveryActionResponse(BaseModel):
     action: str = Field(description="The action to take: 'offer_discount', 'send_reminder', 'escalate', or 'drop'")
     discount_percentage: float = Field(description="Discount percentage if offered, 0 otherwise")
@@ -70,7 +73,7 @@ async def simulate_abandonment(req: OrderSimulateRequest):
     raise HTTPException(status_code=500, detail="Failed to simulate abandonment")
 
 @app.post("/trigger-recovery/{order_id}")
-async def trigger_recovery(order_id: str):
+async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] = None):
     if not supabase or not gemini_client:
         raise HTTPException(status_code=500, detail="Supabase or Gemini not configured")
         
@@ -107,6 +110,7 @@ async def trigger_recovery(order_id: str):
         return {"status": "escalated", "reason": "Max attempts reached"}
 
     # Ask Gemini for strategy
+    custom_instructions = f"\n    Additional Manual Instructions from User: {req.custom_prompt}" if req and req.custom_prompt else ""
     prompt = f"""
     You are an AI recovery agent for an e-commerce checkout.
     An order was abandoned.
@@ -120,7 +124,7 @@ async def trigger_recovery(order_id: str):
     Important rules:
     - If price hesitation, offer a discount. Max discount allowed is 10%.
     - If UPI timeout, send a reminder first.
-    - If card decline, send a reminder to try another method.
+    - If card decline, send a reminder to try another method.{custom_instructions}
     """
     
     try:
@@ -172,6 +176,13 @@ async def trigger_recovery(order_id: str):
     except Exception as e:
         print(f"Error calling Gemini or DB: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+@app.get("/abandoned-orders")
+async def get_abandoned_orders():
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    res = supabase.table('orders').select('*').in_('status', ['abandoned', 'escalated']).order('created_at', desc=True).execute()
+    return res.data
 
 @app.get("/dashboard-metrics")
 async def dashboard_metrics():
