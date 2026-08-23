@@ -236,7 +236,7 @@ async function fetchMetrics() {
                 const discount = log.metadata?.discount_offered;
                 
                 const logHtml = `
-                    <div data-id="${log.id}" class="glass-panel rounded-2xl p-5 border-l-[3px] ${style.border} transform transition-all duration-500 opacity-0 translate-y-4" style="animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${delay}s forwards;">
+                    <div data-id="${log.id}" class="glass-panel rounded-2xl p-5 border-l-[3px] ${style.border} transform transition-all duration-500 opacity-0 translate-y-4" style="animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${delay}s forwards;">
                         <div class="flex justify-between items-start mb-3">
                             <div class="flex items-center gap-3">
                                 <span class="text-[10px] font-bold uppercase tracking-widest ${style.text} ${style.bg} px-3 py-1.5 rounded-lg border border-white/5 shadow-inner">
