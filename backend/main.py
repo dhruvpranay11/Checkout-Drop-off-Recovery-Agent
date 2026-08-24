@@ -189,6 +189,15 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
         
         if success:
              supabase.table('orders').update({'status': 'recovered', 'contact_attempts': new_attempts}).eq('id', order_id).execute()
+             
+             # Log successful recovery in audit_logs
+             supabase.table('audit_logs').insert({
+                 'order_id': order_id,
+                 'action_type': 'RECOVERY_SUCCESSFUL',
+                 'metadata': {'recovered_amount': order['cart_value'], 'attempts_used': new_attempts},
+                 'reasoning': f"Customer completed checkout via recovery link. ₹{order['cart_value']} successfully recovered."
+             }).execute()
+             
              result_status = "recovered"
         else:
              supabase.table('orders').update({'contact_attempts': new_attempts}).eq('id', order_id).execute()
