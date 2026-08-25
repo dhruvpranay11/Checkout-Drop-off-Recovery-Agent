@@ -183,9 +183,9 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
             'reasoning': decision.reasoning
         }).execute()
         
-        # We simulate recovery success randomly if discount is offered or reminder sent for this demo
+        # We simulate recovery success randomly for this demo (35% success rate)
         # In real life, this would wait for user action
-        success = random.choice([True, False])
+        success = random.random() < 0.35
         
         if success:
              supabase.table('orders').update({'status': 'recovered', 'contact_attempts': new_attempts}).eq('id', order_id).execute()
