@@ -199,14 +199,20 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
         # Dispatch Phone Call via Twilio if applicable
         if decision.action in ['offer_discount', 'send_reminder'] and twilio_client:
             try:
+                import urllib.parse
+                
                 # Sanitize text just in case to avoid XML breaks
                 safe_message = decision.sms_message.replace('<', '').replace('>', '').replace('&', 'and')
                 
                 # TwiML instructions: Speak the message using a realistic voice, then automatically hang up
                 twiml_script = f"<Response><Say voice='alice'>{safe_message}</Say></Response>"
                 
+                # Trial accounts block the `twiml` parameter, so we use Twilio's public echo server
+                encoded_twiml = urllib.parse.quote(twiml_script)
+                twimlet_url = f"http://twimlets.com/echo?Twiml={encoded_twiml}"
+                
                 call = twilio_client.calls.create(
-                    twiml=twiml_script,
+                    url=twimlet_url,
                     from_=TWILIO_PHONE_NUMBER,
                     to=order['customer_phone']
                 )
