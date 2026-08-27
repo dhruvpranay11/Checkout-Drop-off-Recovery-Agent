@@ -74,7 +74,7 @@ async def simulate_abandonment(req: OrderSimulateRequest):
     
     response = supabase.table('orders').insert({
         'customer_name': 'Test User',
-        'customer_phone': '+919876543210',
+        'customer_phone': '+918886330011',
         'cart_value': req.amount,
         'status': 'abandoned',
         'contact_attempts': 0,
