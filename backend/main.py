@@ -14,6 +14,7 @@ from datetime import datetime
 import random
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from twilio.rest import Client as TwilioClient
 load_dotenv()
 
 app = FastAPI(title="NudgePay Recovery Agent API")
@@ -43,6 +44,16 @@ if not GEMINI_API_KEY:
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
+# Initialize Twilio
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.environ.get("TWILIO_PHONE_NUMBER")
+
+if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+    print("Warning: Twilio credentials missing. SMS will not be sent.")
+
+twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else None
+
 class OrderSimulateRequest(BaseModel):
     amount: float
     reason: str
@@ -54,6 +65,7 @@ class RecoveryActionResponse(BaseModel):
     action: str = Field(description="The action to take: 'offer_discount', 'send_reminder', 'escalate', or 'drop'")
     discount_percentage: float = Field(description="Discount percentage if offered, 0 otherwise")
     reasoning: str = Field(description="The reasoning behind the decision")
+    sms_message: str = Field(description="The exact text message to send to the customer")
 
 @app.post("/simulate-abandonment")
 async def simulate_abandonment(req: OrderSimulateRequest):
@@ -120,12 +132,13 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
     - Drop-off Reason: {order['drop_off_reason']}
     - Previous Attempts: {order['contact_attempts']}
     
-    Decide on the best recovery action.
+    Decide on the best recovery action AND draft the exact SMS message to send.
     Options for action: 'offer_discount', 'send_reminder', 'escalate', 'drop'.
     Important rules:
-    - If price hesitation, offer a discount. Max discount allowed is 10%.
+    - If price hesitation, offer a discount (Max 10%). Mention the discount in the SMS.
     - If UPI timeout, send a reminder first.
-    - If card decline, send a reminder to try another method.{custom_instructions}
+    - If card decline, send a reminder to try another method.
+    - Keep the SMS message under 160 characters, friendly, and include a generic link like (nudgepay.in/recover/123).{custom_instructions}
     """
     
     try:
@@ -179,9 +192,21 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
         supabase.table('audit_logs').insert({
             'order_id': order_id,
             'action_type': decision.action,
-            'metadata': {'discount_offered': final_discount},
+            'metadata': {'discount_offered': final_discount, 'sms_draft': decision.sms_message},
             'reasoning': decision.reasoning
         }).execute()
+        
+        # Dispatch SMS via Twilio if applicable
+        if decision.action in ['offer_discount', 'send_reminder'] and twilio_client:
+            try:
+                message = twilio_client.messages.create(
+                    body=decision.sms_message,
+                    from_=TWILIO_PHONE_NUMBER,
+                    to=order['customer_phone']
+                )
+                print(f"Twilio SMS sent! SID: {message.sid}")
+            except Exception as twilio_err:
+                print(f"Failed to send Twilio SMS: {twilio_err}")
         
         # We simulate recovery success randomly for this demo (35% success rate)
         # In real life, this would wait for user action

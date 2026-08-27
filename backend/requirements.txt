@@ -4,3 +4,4 @@ supabase
 google-genai
 pydantic
 python-dotenv
+twilio
