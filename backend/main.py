@@ -1,7 +1,7 @@
 import os
 import json
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -13,7 +13,7 @@ from typing import Optional, List
 from datetime import datetime
 import random
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from twilio.rest import Client as TwilioClient
 load_dotenv()
 
@@ -66,6 +66,14 @@ class RecoveryActionResponse(BaseModel):
     discount_percentage: float = Field(description="Discount percentage if offered, 0 otherwise")
     reasoning: str = Field(description="The reasoning behind the decision")
     sms_message: str = Field(description="The exact text message to send to the customer")
+
+@app.api_route("/twiml", methods=["GET", "POST"])
+async def serve_twiml(message: str):
+    """Twilio Webhook Endpoint to serve raw TwiML for phone calls"""
+    # Sanitize XML characters just in case
+    safe_msg = message.replace('<', '').replace('>', '').replace('&', 'and')
+    twiml = f"<Response><Say voice='alice'>{safe_msg}</Say></Response>"
+    return Response(content=twiml, media_type="text/xml")
 
 @app.post("/simulate-abandonment")
 async def simulate_abandonment(req: OrderSimulateRequest):
@@ -201,18 +209,12 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
             try:
                 import urllib.parse
                 
-                # Sanitize text just in case to avoid XML breaks
-                safe_message = decision.sms_message.replace('<', '').replace('>', '').replace('&', 'and')
-                
-                # TwiML instructions: Speak the message using a realistic voice, then automatically hang up
-                twiml_script = f"<Response><Say voice='alice'>{safe_message}</Say></Response>"
-                
-                # Trial accounts block the `twiml` parameter, so we use Twilio's public echo server
-                encoded_twiml = urllib.parse.quote(twiml_script)
-                twimlet_url = f"http://twimlets.com/echo?Twiml={encoded_twiml}"
+                # We hit our own FastAPI server instead of the unreliable twimlets.com
+                encoded_msg = urllib.parse.quote(decision.sms_message)
+                render_url = f"https://checkout-drop-off-recovery-agent.onrender.com/twiml?message={encoded_msg}"
                 
                 call = twilio_client.calls.create(
-                    url=twimlet_url,
+                    url=render_url,
                     from_=TWILIO_PHONE_NUMBER,
                     to=order['customer_phone']
                 )
