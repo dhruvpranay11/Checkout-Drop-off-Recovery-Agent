@@ -68,11 +68,16 @@ class RecoveryActionResponse(BaseModel):
     sms_message: str = Field(description="The exact text message to send to the customer")
 
 @app.api_route("/twiml", methods=["GET", "POST"])
-async def serve_twiml(message: str):
+async def serve_twiml(request: Request):
     """Twilio Webhook Endpoint to serve raw TwiML for phone calls"""
+    # Extract message from query params safely to avoid FastAPI 422 validation errors on Twilio's POST body
+    message = request.query_params.get("message", "Hello! This is the NudgePay AI. We noticed you left your checkout, please return to complete your order.")
+    
     # Sanitize XML characters just in case
     safe_msg = message.replace('<', '').replace('>', '').replace('&', 'and')
-    twiml = f"<Response><Say voice='alice'>{safe_msg}</Say></Response>"
+    
+    # Standard Twilio XML response
+    twiml = f"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response><Say voice='alice'>{safe_msg}</Say></Response>"
     return Response(content=twiml, media_type="text/xml")
 
 @app.post("/simulate-abandonment")
