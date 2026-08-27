@@ -132,13 +132,13 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
     - Drop-off Reason: {order['drop_off_reason']}
     - Previous Attempts: {order['contact_attempts']}
     
-    Decide on the best recovery action AND draft the exact SMS message to send.
+    Decide on the best recovery action AND draft the exact spoken script for an automated phone call.
     Options for action: 'offer_discount', 'send_reminder', 'escalate', 'drop'.
     Important rules:
-    - If price hesitation, offer a discount (Max 10%). Mention the discount in the SMS.
+    - If price hesitation, offer a discount (Max 10%). Mention the discount in the script.
     - If UPI timeout, send a reminder first.
     - If card decline, send a reminder to try another method.
-    - Keep the SMS message under 160 characters, friendly, and include a generic link like (nudgepay.in/recover/123).{custom_instructions}
+    - Keep the script short (under 30 seconds to speak), extremely friendly, and conversational. Do NOT include any URLs or links because this will be spoken out loud by an AI voice.{custom_instructions}
     """
     
     try:
@@ -196,17 +196,23 @@ async def trigger_recovery(order_id: str, req: Optional[TriggerRecoveryRequest] 
             'reasoning': decision.reasoning
         }).execute()
         
-        # Dispatch SMS via Twilio if applicable
+        # Dispatch Phone Call via Twilio if applicable
         if decision.action in ['offer_discount', 'send_reminder'] and twilio_client:
             try:
-                message = twilio_client.messages.create(
-                    body=decision.sms_message,
+                # Sanitize text just in case to avoid XML breaks
+                safe_message = decision.sms_message.replace('<', '').replace('>', '').replace('&', 'and')
+                
+                # TwiML instructions: Speak the message using a realistic voice, then automatically hang up
+                twiml_script = f"<Response><Say voice='alice'>{safe_message}</Say></Response>"
+                
+                call = twilio_client.calls.create(
+                    twiml=twiml_script,
                     from_=TWILIO_PHONE_NUMBER,
                     to=order['customer_phone']
                 )
-                print(f"Twilio SMS sent! SID: {message.sid}")
+                print(f"Twilio Call initiated! SID: {call.sid}")
             except Exception as twilio_err:
-                print(f"Failed to send Twilio SMS: {twilio_err}")
+                print(f"Failed to initiate Twilio Call: {twilio_err}")
         
         # We simulate recovery success randomly for this demo (35% success rate)
         # In real life, this would wait for user action
